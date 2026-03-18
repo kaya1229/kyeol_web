@@ -11,10 +11,7 @@ class DisciplineApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFFAF9F6),
-      ),
+      theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: const Color(0xFFFAF9F6)),
       home: const NavigationScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -84,6 +81,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
+  // [핵심] 결석 횟수를 계산하는 로직을 부모가 직접 수행합니다.
+  int get remainingMisses {
+    int missCount = 0;
+    DateTime now = DateTime.now();
+    DateTime checkUntil = now.isBefore(_endDate) ? now : _endDate;
+
+    for (int i = 0; i <= checkUntil.difference(_startDate).inDays; i++) {
+      DateTime day = _startDate.add(Duration(days: i));
+      String key = DateFormat('yyyy-MM-dd').format(day);
+      DayRecord? r = _records[key];
+      // 기록이 없거나 아침/저녁 중 하나라도 false면 결석
+      if (r == null || !r.morning || !r.evening) missCount++;
+    }
+    int res = _maxMissAllowance - missCount;
+    return res < 0 ? 0 : res;
+  }
+
   void _showSettings() async {
     int tempMiss = _maxMissAllowance;
     DateTime tempStart = _startDate;
@@ -104,7 +118,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
               ),
               ListTile(
-                title: const Text('START'),
+                title: const Text('START DATE'),
                 subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
                 onTap: () async {
                   DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
@@ -112,7 +126,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 },
               ),
               ListTile(
-                title: const Text('END'),
+                title: const Text('END DATE'),
                 subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
                 onTap: () async {
                   DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
@@ -124,8 +138,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
-                _updateState();
+                setState(() { 
+                  _maxMissAllowance = tempMiss; 
+                  _startDate = tempStart; 
+                  _endDate = tempEnd; 
+                });
+                _updateState(); // 저장 및 리빌드
                 Navigator.pop(context);
               }, 
               child: const Text('SAVE')
@@ -139,12 +157,21 @@ class _NavigationScreenState extends State<NavigationScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
     return Scaffold(
       body: Stack(
         children: [
+          // IndexedStack이 자식들을 들고 있을 때, 
+          // 부모의 setState가 불리면 자식들도 새로운 파라미터로 다시 빌드됩니다.
           IndexedStack(index: _selectedIndex, children: [
-            TodayView(getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), onUpdate: _updateState),
-            CalendarView(records: _records, maxMiss: _maxMissAllowance, startDate: _startDate, endDate: _endDate, onSettings: _showSettings, onUpdate: _updateState),
+            TodayView(
+              getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), 
+              onUpdate: _updateState
+            ),
+            CalendarView(
+              remaining: remainingMisses, // 계산된 값을 직접 넘겨줌
+              onSettings: _showSettings,
+            ),
           ]),
           Positioned(
             left: _buttonPos.dx, top: _buttonPos.dy,
@@ -164,7 +191,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 }
 
-// --- [TODAY VIEW] ---
+// --- [TODAY VIEW] --- (내용 동일하지만 최적화)
 class TodayView extends StatefulWidget {
   final DayRecord Function(DateTime) getRecord;
   final VoidCallback onUpdate;
@@ -193,7 +220,7 @@ class _TodayViewState extends State<TodayView> {
               _btn("EVENING", record.evening, () { setState(() => record.evening = !record.evening); widget.onUpdate(); }),
             ],
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 50),
             child: TextField(
@@ -213,47 +240,27 @@ class _TodayViewState extends State<TodayView> {
   );
 }
 
-// --- [CALENDAR VIEW] ---
+// --- [CALENDAR VIEW] --- (실시간 파라미터를 받음)
 class CalendarView extends StatelessWidget {
-  final Map<String, DayRecord> records;
-  final int maxMiss;
-  final DateTime startDate;
-  final DateTime endDate;
+  final int remaining;
   final VoidCallback onSettings;
-  final VoidCallback onUpdate;
 
-  const CalendarView({super.key, required this.records, required this.maxMiss, required this.startDate, required this.endDate, required this.onSettings, required this.onUpdate});
+  const CalendarView({super.key, required this.remaining, required this.onSettings});
 
   @override
   Widget build(BuildContext context) {
-    int missCount = 0;
-    DateTime now = DateTime.now();
-    DateTime checkUntil = now.isBefore(endDate) ? now : endDate;
-
-    for (int i = 0; i <= checkUntil.difference(startDate).inDays; i++) {
-      DateTime day = startDate.add(Duration(days: i));
-      String key = DateFormat('yyyy-MM-dd').format(day);
-      DayRecord? r = records[key];
-      // 아침/저녁 중 하나라도 안 했으면 결석
-      if (r == null || !r.morning || !r.evening) missCount++;
-    }
-
-    int remaining = maxMiss - missCount;
-
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, actions: [IconButton(icon: const Icon(Icons.settings), onPressed: onSettings)]),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [IconButton(icon: const Icon(Icons.settings), onPressed: onSettings)]),
       body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Text("REMAINING MISSES", style: TextStyle(letterSpacing: 2, color: Colors.grey)),
-          Text("${remaining < 0 ? 0 : remaining}".padLeft(2, '0'), style: const TextStyle(fontSize: 80, fontWeight: FontWeight.w100)),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(20),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7),
-              itemCount: 31,
-              itemBuilder: (context, i) => Center(child: Text("${i + 1}")),
-            ),
-          )
+          const SizedBox(height: 10),
+          // 부모로부터 받은 remaining 값을 그대로 보여줌
+          Text("${remaining}".padLeft(2, '0'), style: const TextStyle(fontSize: 100, fontWeight: FontWeight.w100)),
+          const SizedBox(height: 40),
+          const Text("Keep going!", style: TextStyle(color: Colors.black26)),
         ],
       ),
     );
