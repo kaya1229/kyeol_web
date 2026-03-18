@@ -11,7 +11,11 @@ class DisciplineApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: const Color(0xFFFAF9F6)),
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFFAF9F6),
+        fontFamily: 'Pretendard',
+      ),
       home: const NavigationScreen(),
       debugShowCheckedModeBanner: false,
     );
@@ -56,20 +60,18 @@ class _NavigationScreenState extends State<NavigationScreen> {
   void initState() { super.initState(); _loadData(); }
 
   Future<void> _loadData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      setState(() {
-        _maxMissAllowance = prefs.getInt('maxMiss') ?? 10;
-        _startDate = DateTime.parse(prefs.getString('startDate') ?? DateTime.now().toIso8601String());
-        _endDate = DateTime.parse(prefs.getString('endDate') ?? DateTime.now().add(const Duration(days: 30)).toIso8601String());
-        String? saved = prefs.getString('records');
-        if (saved != null) {
-          Map<String, dynamic> decoded = jsonDecode(saved);
-          _records = decoded.map((k, v) => MapEntry(k, DayRecord.fromJson(v)));
-        }
-        _isLoading = false;
-      });
-    } catch (e) { setState(() => _isLoading = false); }
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _maxMissAllowance = prefs.getInt('maxMiss') ?? 10;
+      _startDate = DateTime.parse(prefs.getString('startDate') ?? DateTime.now().toIso8601String());
+      _endDate = DateTime.parse(prefs.getString('endDate') ?? DateTime.now().add(const Duration(days: 30)).toIso8601String());
+      String? saved = prefs.getString('records');
+      if (saved != null) {
+        Map<String, dynamic> decoded = jsonDecode(saved);
+        _records = decoded.map((k, v) => MapEntry(k, DayRecord.fromJson(v)));
+      }
+      _isLoading = false;
+    });
   }
 
   void _updateState() { setState(() {}); _saveData(); }
@@ -81,7 +83,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
-  // [핵심] 결석 횟수를 계산하는 로직을 부모가 직접 수행합니다.
+  // 실시간 결석 계산 로직
   int get remainingMisses {
     int missCount = 0;
     DateTime now = DateTime.now();
@@ -91,7 +93,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
       DateTime day = _startDate.add(Duration(days: i));
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord? r = _records[key];
-      // 기록이 없거나 아침/저녁 중 하나라도 false면 결석
       if (r == null || !r.morning || !r.evening) missCount++;
     }
     int res = _maxMissAllowance - missCount;
@@ -107,18 +108,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('SETTINGS'),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          title: const Text('SETTINGS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 2)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                decoration: const InputDecoration(labelText: 'MAX MISSES'),
+                decoration: const InputDecoration(labelText: 'MAX MISSES', labelStyle: TextStyle(fontSize: 12)),
                 keyboardType: TextInputType.number,
                 controller: TextEditingController(text: tempMiss.toString()),
                 onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
               ),
+              const SizedBox(height: 10),
               ListTile(
-                title: const Text('START DATE'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('START DATE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
                 onTap: () async {
                   DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
@@ -126,7 +132,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 },
               ),
               ListTile(
-                title: const Text('END DATE'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('END DATE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
                 onTap: () async {
                   DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
@@ -136,15 +143,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
             ],
           ),
           actions: [
-            TextButton(
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('CLOSE', style: TextStyle(color: Colors.black))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white),
               onPressed: () {
-                setState(() { 
-                  _maxMissAllowance = tempMiss; 
-                  _startDate = tempStart; 
-                  _endDate = tempEnd; 
-                });
-                _updateState(); // 저장 및 리빌드
-                Navigator.pop(context);
+                setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
+                _updateState(); Navigator.pop(context);
               }, 
               child: const Text('SAVE')
             ),
@@ -156,22 +160,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.black)));
     return Scaffold(
       body: Stack(
         children: [
-          // IndexedStack이 자식들을 들고 있을 때, 
-          // 부모의 setState가 불리면 자식들도 새로운 파라미터로 다시 빌드됩니다.
           IndexedStack(index: _selectedIndex, children: [
-            TodayView(
-              getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), 
-              onUpdate: _updateState
-            ),
-            CalendarView(
-              remaining: remainingMisses, // 계산된 값을 직접 넘겨줌
-              onSettings: _showSettings,
-            ),
+            TodayScreen(getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), onUpdate: _updateState),
+            CalendarScreen(records: _records, remaining: remainingMisses, onSettings: _showSettings, onUpdate: _updateState),
           ]),
           Positioned(
             left: _buttonPos.dx, top: _buttonPos.dy,
@@ -179,9 +174,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
               onPanUpdate: (details) => setState(() => _buttonPos += details.delta),
               onTap: () => setState(() => _selectedIndex = (_selectedIndex == 0 ? 1 : 0)),
               child: Container(
-                width: 60, height: 60,
-                decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
-                child: Icon(_selectedIndex == 0 ? Icons.calendar_month : Icons.timer, color: Colors.white),
+                width: 65, height: 65,
+                decoration: BoxDecoration(
+                  color: Colors.black, 
+                  shape: BoxShape.circle, 
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 6))]
+                ),
+                child: Icon(_selectedIndex == 0 ? Icons.calendar_month : Icons.access_time_filled, color: Colors.white, size: 28),
               ),
             ),
           ),
@@ -191,78 +190,169 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 }
 
-// --- [TODAY VIEW] --- (내용 동일하지만 최적화)
-class TodayView extends StatefulWidget {
+// --- [PAGE 1: TODAY] --- (기존 디자인 복구)
+class TodayScreen extends StatefulWidget {
   final DayRecord Function(DateTime) getRecord;
   final VoidCallback onUpdate;
-  const TodayView({super.key, required this.getRecord, required this.onUpdate});
+  const TodayScreen({super.key, required this.getRecord, required this.onUpdate});
   @override
-  State<TodayView> createState() => _TodayViewState();
+  State<TodayScreen> createState() => _TodayScreenState();
 }
 
-class _TodayViewState extends State<TodayView> {
+class _TodayScreenState extends State<TodayScreen> {
+  late Timer _timer;
+  DateTime _now = DateTime.now();
   final TextEditingController _todoController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) { if (mounted) setState(() => _now = DateTime.now()); });
+  }
+
+  @override
+  void dispose() { _timer.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    DayRecord today = widget.getRecord(_now);
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            const Text('TODAY', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 8)),
+            Text(DateFormat('2026.MM.dd').format(_now), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w300, letterSpacing: 2, color: Colors.black45)),
+            const SizedBox(height: 40),
+            Column(children: [
+              Text(DateFormat('HH').format(_now), style: const TextStyle(fontSize: 82, fontWeight: FontWeight.w100, height: 0.9)),
+              Text(DateFormat('mm').format(_now), style: const TextStyle(fontSize: 82, fontWeight: FontWeight.w100, height: 1.0)),
+            ]),
+            const SizedBox(height: 50),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Row(children: [
+                _checkBtn('MORNING', Icons.wb_sunny_outlined, today.morning, () { today.morning = !today.morning; widget.onUpdate(); }),
+                const SizedBox(width: 15),
+                _checkBtn('EVENING', Icons.nightlight_outlined, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
+              ]),
+            ),
+            const SizedBox(height: 30),
+            Container(
+              margin: const EdgeInsets.fromLTRB(30, 0, 30, 150),
+              padding: const EdgeInsets.all(35),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(45), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 20, offset: const Offset(0, 10))]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('MISSIONS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 2)),
+                  ...today.todos.asMap().entries.map((e) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: GestureDetector(onTap: () { setState(() => e.value.isDone = !e.value.isDone); widget.onUpdate(); }, child: Icon(e.value.isDone ? Icons.check_circle : Icons.circle_outlined, color: Colors.black, size: 20)),
+                    title: Text(e.value.task, style: TextStyle(fontSize: 14, decoration: e.value.isDone ? TextDecoration.lineThrough : null, color: e.value.isDone ? Colors.black26 : Colors.black)),
+                    trailing: IconButton(icon: const Icon(Icons.close, size: 14), onPressed: () { setState(() => today.todos.removeAt(e.key)); widget.onUpdate(); }),
+                  )).toList(),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: _todoController,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: const InputDecoration(hintText: '+ Add mission', border: InputBorder.none, hintStyle: TextStyle(fontSize: 12, color: Colors.black26)),
+                    onSubmitted: (v) { if (v.trim().isNotEmpty) { setState(() => today.todos.add(TodoItem(v.trim()))); widget.onUpdate(); _todoController.clear(); } },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _checkBtn(String label, IconData icon, bool isDone, VoidCallback onTap) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        decoration: BoxDecoration(color: isDone ? Colors.black : Colors.white, borderRadius: BorderRadius.circular(25), border: isDone ? null : Border.all(color: Colors.black.withOpacity(0.05))),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: isDone ? Colors.white : Colors.black, size: 16), const SizedBox(width: 8), Text(label, style: TextStyle(color: isDone ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 10))]),
+      ),
+    ),
+  );
+}
+
+// --- [PAGE 2: CALENDAR] --- (기존 디자인 복구 + 실시간 연동)
+class CalendarScreen extends StatelessWidget {
+  final Map<String, DayRecord> records;
+  final int remaining;
+  final VoidCallback onSettings;
+  final VoidCallback onUpdate;
+
+  const CalendarScreen({super.key, required this.records, required this.remaining, required this.onSettings, required this.onUpdate});
+
   @override
   Widget build(BuildContext context) {
     DateTime now = DateTime.now();
-    DayRecord record = widget.getRecord(now);
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [IconButton(icon: const Icon(Icons.tune, color: Colors.black), onPressed: onSettings)]),
+      body: Column(
         children: [
-          Text(DateFormat('HH:mm').format(now), style: const TextStyle(fontSize: 80, fontWeight: FontWeight.w100)),
+          const Text('2026', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w300, letterSpacing: 10, color: Colors.black26)),
+          const SizedBox(height: 12),
+          Text(DateFormat('MMMM').format(now).toUpperCase(), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w200, letterSpacing: 2.5, color: Colors.black, height: 1.0)),
+          const SizedBox(height: 40),
+          const Text('REMAINING MISSES', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.black26)),
+          // [실시간 반영되는 숫자]
+          Text(remaining.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 65, fontWeight: FontWeight.w100)),
           const SizedBox(height: 30),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _btn("MORNING", record.morning, () { setState(() => record.morning = !record.morning); widget.onUpdate(); }),
-              const SizedBox(width: 10),
-              _btn("EVENING", record.evening, () { setState(() => record.evening = !record.evening); widget.onUpdate(); }),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 50),
-            child: TextField(
-              controller: _todoController,
-              decoration: const InputDecoration(hintText: "Add Mission"),
-              onSubmitted: (v) { if(v.isNotEmpty) { setState(()=>record.todos.add(TodoItem(v))); widget.onUpdate(); _todoController.clear(); } },
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 30),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 15, crossAxisSpacing: 15),
+              itemCount: daysInMonth,
+              itemBuilder: (context, index) {
+                DateTime d = DateTime(now.year, now.month, index + 1);
+                String dateKey = DateFormat('yyyy-MM-dd').format(d);
+                DayRecord r = records.putIfAbsent(dateKey, () => DayRecord());
+                bool allDone = r.morning && r.evening;
+                bool isSunday = d.weekday == DateTime.sunday;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: isSunday ? Colors.black.withOpacity(0.08) : Colors.black.withOpacity(0.04)),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+                      Text('${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: allDone ? Colors.white : Colors.black)),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
   }
-  Widget _btn(String txt, bool val, VoidCallback fn) => ElevatedButton(
-    onPressed: fn, 
-    style: ElevatedButton.styleFrom(backgroundColor: val ? Colors.black : Colors.white),
-    child: Text(txt, style: TextStyle(color: val ? Colors.white : Colors.black)),
-  );
 }
 
-// --- [CALENDAR VIEW] --- (실시간 파라미터를 받음)
-class CalendarView extends StatelessWidget {
-  final int remaining;
-  final VoidCallback onSettings;
-
-  const CalendarView({super.key, required this.remaining, required this.onSettings});
-
+class CirclePainter extends CustomPainter {
+  final bool m; final bool e;
+  CirclePainter(this.m, this.e);
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [IconButton(icon: const Icon(Icons.settings), onPressed: onSettings)]),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text("REMAINING MISSES", style: TextStyle(letterSpacing: 2, color: Colors.grey)),
-          const SizedBox(height: 10),
-          // 부모로부터 받은 remaining 값을 그대로 보여줌
-          Text("${remaining}".padLeft(2, '0'), style: const TextStyle(fontSize: 100, fontWeight: FontWeight.w100)),
-          const SizedBox(height: 40),
-          const Text("Keep going!", style: TextStyle(color: Colors.black26)),
-        ],
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = Colors.black..style = PaintingStyle.fill;
+    if (m && e) canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
+    else if (m) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
+    else if (e) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
   }
+  @override
+  bool shouldRepaint(CustomPainter old) => true;
 }
