@@ -14,7 +14,6 @@ class DisciplineApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFFAF9F6),
-        fontFamily: 'Pretendard',
       ),
       home: const NavigationScreen(),
       debugShowCheckedModeBanner: false,
@@ -34,6 +33,245 @@ class DayRecord {
   bool morning; bool evening; List<TodoItem> todos;
   DayRecord({this.morning = false, this.evening = false, List<TodoItem>? todos}) : todos = todos ?? [];
   Map<String, dynamic> toJson() => {'morning': morning, 'evening': evening, 'todos': todos.map((e) => e.toJson()).toList()};
+  factory DayRecord.fromJson(Map<String, dynamic> json) => DayRecord(
+    morning: json['morning'] ?? false, evening: json['evening'] ?? false, 
+    todos: (json['todos'] as List?)?.map((e) => TodoItem.fromJson(e)).toList() ?? []
+  );
+}
+
+// --- [MAIN NAVIGATION] ---
+class NavigationScreen extends StatefulWidget {
+  const NavigationScreen({super.key});
+  @override
+  State<NavigationScreen> createState() => _NavigationScreenState();
+}
+
+class _NavigationScreenState extends State<NavigationScreen> {
+  int _selectedIndex = 0;
+  Offset _buttonPos = const Offset(280, 550); 
+  int _maxMissAllowance = 10;
+  DateTime _startDate = DateTime.now();
+  DateTime _endDate = DateTime.now().add(const Duration(days: 30));
+  Map<String, DayRecord> _records = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() { super.initState(); _loadData(); }
+
+  Future<void> _loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _maxMissAllowance = prefs.getInt('maxMiss') ?? 10;
+        _startDate = DateTime.parse(prefs.getString('startDate') ?? DateTime.now().toIso8601String());
+        _endDate = DateTime.parse(prefs.getString('endDate') ?? DateTime.now().add(const Duration(days: 30)).toIso8601String());
+        String? saved = prefs.getString('records');
+        if (saved != null) {
+          Map<String, dynamic> decoded = jsonDecode(saved);
+          _records = decoded.map((k, v) => MapEntry(k, DayRecord.fromJson(v)));
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _updateState() { setState(() {}); _saveData(); }
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('maxMiss', _maxMissAllowance);
+    await prefs.setString('startDate', _startDate.toIso8601String());
+    await prefs.setString('endDate', _endDate.toIso8601String());
+    await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
+  }
+
+  void _showSettings() async {
+    int tempMiss = _maxMissAllowance;
+    DateTime tempStart = _startDate;
+    DateTime tempEnd = _endDate;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('SETTINGS'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(labelText: 'MAX MISSES'),
+                keyboardType: TextInputType.number,
+                controller: TextEditingController(text: tempMiss.toString()),
+                onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
+              ),
+              ListTile(
+                title: const Text('START DATE'),
+                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                  if (picked != null) setDialogState(() => tempStart = picked);
+                },
+              ),
+              ListTile(
+                title: const Text('END DATE'),
+                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                  if (picked != null) setDialogState(() => tempEnd = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('SAVE', style: TextStyle(color: Colors.black))),
+          ],
+        ),
+      ),
+    );
+    // 팝업 닫힌 후 상태 반영
+    setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
+    _updateState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      body: Stack(
+        children: [
+          IndexedStack(index: _selectedIndex, children: [
+            TodayScreen(getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), onUpdate: _updateState),
+            CalendarScreen(records: _records, onUpdate: _updateState, maxMiss: _maxMissAllowance, startDate: _startDate, endDate: _endDate, onSettings: _showSettings),
+          ]),
+          Positioned(
+            left: _buttonPos.dx, top: _buttonPos.dy,
+            child: GestureDetector(
+              onPanUpdate: (details) => setState(() => _buttonPos += details.delta),
+              onTap: () => setState(() => _selectedIndex = (_selectedIndex == 0 ? 1 : 0)),
+              child: Container(
+                width: 65, height: 65,
+                decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+                child: Icon(_selectedIndex == 0 ? Icons.calendar_month : Icons.access_time_filled, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- [PAGE 1: TODAY] ---
+class TodayScreen extends StatefulWidget {
+  final DayRecord Function(DateTime) getRecord;
+  final VoidCallback onUpdate;
+  const TodayScreen({super.key, required this.getRecord, required this.onUpdate});
+  @override
+  State<TodayScreen> createState() => _TodayScreenState();
+}
+
+class _TodayScreenState extends State<TodayScreen> {
+  late Timer _timer;
+  DateTime _now = DateTime.now();
+  final TextEditingController _todoController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) { if (mounted) setState(() => _now = DateTime.now()); });
+  }
+
+  @override
+  void dispose() { _timer.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    DayRecord today = widget.getRecord(_now);
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            const Text('TODAY', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 5)),
+            Text(DateFormat('HH:mm').format(_now), style: const TextStyle(fontSize: 80, fontWeight: FontWeight.w100)),
+            const SizedBox(height: 50),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _checkBtn('MORNING', today.morning, () { setState(() => today.morning = !today.morning); widget.onUpdate(); }),
+              const SizedBox(width: 20),
+              _checkBtn('EVENING', today.evening, () { setState(() => today.evening = !today.evening); widget.onUpdate(); }),
+            ]),
+            const SizedBox(height: 40),
+            // 미션 리스트 생략 없이 그대로 유지
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  ...today.todos.map((t) => ListTile(title: Text(t.task))).toList(),
+                  TextField(onSubmitted: (v) { if(v.isNotEmpty) { setState(()=>today.todos.add(TodoItem(v))); widget.onUpdate(); } }),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _checkBtn(String label, bool isDone, VoidCallback onTap) => ElevatedButton(
+    onPressed: onTap,
+    style: ElevatedButton.styleFrom(backgroundColor: isDone ? Colors.black : Colors.white),
+    child: Text(label, style: TextStyle(color: isDone ? Colors.white : Colors.black)),
+  );
+}
+
+// --- [PAGE 2: CALENDAR] ---
+class CalendarScreen extends StatelessWidget {
+  final Map<String, DayRecord> records;
+  final int maxMiss;
+  final DateTime startDate;
+  final DateTime endDate;
+  final VoidCallback onSettings;
+  final VoidCallback onUpdate;
+
+  const CalendarScreen({super.key, required this.records, required this.maxMiss, required this.startDate, required this.endDate, required this.onSettings, required this.onUpdate});
+
+  int _calculateRemaining() {
+    int missCount = 0;
+    DateTime now = DateTime.now();
+    DateTime checkUntil = now.isBefore(endDate) ? now : endDate;
+    for (int i = 0; i <= checkUntil.difference(startDate).inDays; i++) {
+      DateTime day = startDate.add(Duration(days: i));
+      String key = DateFormat('yyyy-MM-dd').format(day);
+      DayRecord? r = records[key];
+      if (r == null || (!r.morning || !r.evening)) missCount++;
+    }
+    return maxMiss - missCount;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    int remaining = _calculateRemaining();
+    return Scaffold(
+      appBar: AppBar(backgroundColor: Colors.transparent, actions: [IconButton(icon: const Icon(Icons.tune), onPressed: onSettings)]),
+      body: Column(
+        children: [
+          const Text('REMAINING MISSES'),
+          Text('$remaining', style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w100)),
+          const SizedBox(height: 20),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(20),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7),
+              itemCount: 31,
+              itemBuilder: (context, index) => Center(child: Text('${index + 1}')),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
   factory DayRecord.fromJson(Map<String, dynamic> json) => DayRecord(
     morning: json['morning'] ?? false, evening: json['evening'] ?? false, 
     todos: (json['todos'] as List?)?.map((e) => TodoItem.fromJson(e)).toList() ?? []
