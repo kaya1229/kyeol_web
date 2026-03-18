@@ -16,7 +16,7 @@ class DisciplineApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFFAF9F6), // 전체 배경 베이지
+        scaffoldBackgroundColor: const Color(0xFFFAF9F6),
         fontFamily: 'Pretendard',
       ),
       home: const NavigationScreen(),
@@ -103,6 +103,59 @@ class _NavigationScreenState extends State<NavigationScreen> {
     return res < 0 ? 0 : res;
   }
 
+  void _showSettings() async {
+    int tempMiss = _maxMissAllowance;
+    DateTime tempStart = _startDate;
+    DateTime tempEnd = _endDate;
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          title: const Text('SETTINGS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(labelText: 'MAX MISS POINTS'),
+                keyboardType: TextInputType.number,
+                controller: TextEditingController(text: tempMiss.toString()),
+                onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
+              ),
+              ListTile(
+                title: const Text('START DATE', style: TextStyle(fontSize: 12)),
+                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                  if (picked != null) setDialogState(() => tempStart = picked);
+                },
+              ),
+              ListTile(
+                title: const Text('END DATE', style: TextStyle(fontSize: 12)),
+                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                  if (picked != null) setDialogState(() => tempEnd = picked);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+              onPressed: () {
+                setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
+                _updateState(); Navigator.pop(context);
+              }, 
+              child: const Text('SAVE')
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.black)));
@@ -111,7 +164,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         children: [
           IndexedStack(index: _selectedIndex, children: [
             TodayScreen(getRecord: (d) => _records.putIfAbsent(DateFormat('yyyy-MM-dd').format(d), () => DayRecord()), onUpdate: _updateState),
-            CalendarScreen(records: _records, remaining: remainingMisses, onUpdate: _updateState),
+            CalendarScreen(records: _records, remaining: remainingMisses, onSettings: _showSettings, onUpdate: _updateState),
           ]),
           Positioned(
             left: _buttonPos.dx, top: _buttonPos.dy,
@@ -227,14 +280,15 @@ class _TodayScreenState extends State<TodayScreen> {
 class CalendarScreen extends StatefulWidget {
   final Map<String, DayRecord> records;
   final int remaining;
+  final VoidCallback onSettings;
   final VoidCallback onUpdate;
-  const CalendarScreen({super.key, required this.records, required this.remaining, required this.onUpdate});
+  const CalendarScreen({super.key, required this.records, required this.remaining, required this.onSettings, required this.onUpdate});
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _viewDate = DateTime.now(); // 달력에서 보고 있는 기준 날짜
+  DateTime _viewDate = DateTime.now();
 
   void _showDayDetails(BuildContext context, DateTime date) {
     String dateKey = DateFormat('yyyy-MM-dd').format(date);
@@ -248,18 +302,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setPopupState) => AlertDialog(
-          backgroundColor: Colors.white, // 팝업은 무조건 화이트
+          backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
-          title: Center(child: Text(DateFormat('MMMM dd').format(date).toUpperCase(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 3))),
+          title: Center(child: Text(DateFormat('MMMM dd').format(date).toUpperCase(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 2))),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (record.todos.isEmpty && !canEdit)
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Text('No missions.', style: TextStyle(color: Colors.black26, fontSize: 14))),
-                
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Text('No missions.', style: TextStyle(color: Colors.black26, fontSize: 13))),
                 if (canEdit) ...[
                   ...record.todos.asMap().entries.map((e) => ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -286,7 +339,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ],
             ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('CLOSE', style: TextStyle(color: Colors.black)))],
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+              onPressed: () => Navigator.pop(context), 
+              child: const Text('CLOSE')
+            ),
+          ],
         ),
       ),
     );
@@ -299,76 +358,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
     int emptyDays = firstDay.weekday % 7;
     DateTime todayStart = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
 
-    return Column(
-      children: [
-        const SizedBox(height: 60),
-        Text('${_viewDate.year}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w300, letterSpacing: 10, color: Colors.black26)),
-        
-        // [수정] 월 이동 버튼 추가
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(icon: const Icon(Icons.chevron_left, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month - 1))),
-            SizedBox(
-              width: 180,
-              child: Center(child: Text(DateFormat('MMMM').format(_viewDate).toUpperCase(), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w200, letterSpacing: 2.5))),
-            ),
-            IconButton(icon: const Icon(Icons.chevron_right, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month + 1))),
-          ],
-        ),
-        
-        const SizedBox(height: 30),
-        const Text('REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.black26)), 
-        Text(widget.remaining.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w100)),
-        const SizedBox(height: 30),
-
-        // [수정] 요일 표시 추가
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.w900))).toList(),
-          ),
-        ),
-        const SizedBox(height: 15),
-
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 30),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 12, crossAxisSpacing: 12),
-            itemCount: daysInMonth + emptyDays,
-            itemBuilder: (context, index) {
-              if (index < emptyDays) return const SizedBox();
-              DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
-              String dateKey = DateFormat('yyyy-MM-dd').format(d);
-              DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
-              bool isAllDone = r.morning && r.evening;
-              bool isMissionsCompleted = d.isBefore(todayStart) && r.todos.isNotEmpty && r.todos.every((t) => t.isDone);
-
-              return GestureDetector(
-                onTap: () => _showDayDetails(context, d),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle, 
-                    color: Colors.white, // 날짜 원은 무조건 화이트
-                    border: Border.all(
-                      color: isMissionsCompleted ? const Color(0xFFAF4448).withOpacity(0.8) : Colors.black.withOpacity(0.04),
-                      width: isMissionsCompleted ? 2.2 : 1.0,
-                    ),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                      Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isAllDone ? Colors.white : Colors.black)),
-                    ],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [IconButton(icon: const Icon(Icons.tune, color: Colors.black), onPressed: widget.onSettings)],
+      ),
+      body: Column(
+        children: [
+          Text('${_viewDate.year}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w300, letterSpacing: 10, color: Colors.black26)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(icon: const Icon(Icons.chevron_left, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month - 1))),
+              Expanded(
+                child: Center(
+                  child: Text(DateFormat('MMMM').format(_viewDate).toUpperCase(), 
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w200, letterSpacing: 1.5),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              );
-            },
+              ),
+              IconButton(icon: const Icon(Icons.chevron_right, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month + 1))),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 20),
+          const Text('REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.black26)), 
+          Text(widget.remaining.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w100)),
+          const SizedBox(height: 30),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.w900))).toList(),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 30),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 12, crossAxisSpacing: 12),
+              itemCount: daysInMonth + emptyDays,
+              itemBuilder: (context, index) {
+                if (index < emptyDays) return const SizedBox();
+                DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
+                String dateKey = DateFormat('yyyy-MM-dd').format(d);
+                DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
+                bool isAllDone = r.morning && r.evening;
+                bool isMissionsCompleted = d.isBefore(todayStart) && r.todos.isNotEmpty && r.todos.every((t) => t.isDone);
+                return GestureDetector(
+                  onTap: () => _showDayDetails(context, d),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle, color: Colors.white,
+                      border: Border.all(
+                        color: isMissionsCompleted ? const Color(0xFFAF4448).withOpacity(0.8) : Colors.black.withOpacity(0.04),
+                        width: isMissionsCompleted ? 2.2 : 1.0,
+                      ),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isAllDone ? Colors.white : Colors.black)),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
