@@ -16,7 +16,7 @@ class DisciplineApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFFAF9F6), // 배경 베이지
+        scaffoldBackgroundColor: const Color(0xFFFAF9F6), // 전체 배경 베이지
         fontFamily: 'Pretendard',
       ),
       home: const NavigationScreen(),
@@ -234,7 +234,7 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _viewDate = DateTime.now(); // 현재 보고 있는 달력 기준일
+  DateTime _viewDate = DateTime.now(); // 달력에서 보고 있는 기준 날짜
 
   void _showDayDetails(BuildContext context, DateTime date) {
     String dateKey = DateFormat('yyyy-MM-dd').format(date);
@@ -248,7 +248,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setPopupState) => AlertDialog(
-          backgroundColor: Colors.white, // 팝업 화이트
+          backgroundColor: Colors.white, // 팝업은 무조건 화이트
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
           title: Center(child: Text(DateFormat('MMMM dd').format(date).toUpperCase(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 3))),
@@ -257,13 +257,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!canEdit && record.todos.isEmpty) 
+                if (record.todos.isEmpty && !canEdit)
                   const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Text('No missions.', style: TextStyle(color: Colors.black26, fontSize: 14))),
+                
                 if (canEdit) ...[
                   ...record.todos.asMap().entries.map((e) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(e.value.isDone ? Icons.check_circle : Icons.circle_outlined, color: Colors.black, size: 18),
-                    title: Text(e.value.task, style: TextStyle(fontSize: 13)),
+                    title: Text(e.value.task, style: const TextStyle(fontSize: 13)),
                     trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, size: 16), onPressed: () { setPopupState(() => record.todos.removeAt(e.key)); widget.onUpdate(); }),
                   )),
                   const SizedBox(height: 10),
@@ -302,30 +303,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: [
         const SizedBox(height: 60),
         Text('${_viewDate.year}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w300, letterSpacing: 10, color: Colors.black26)),
+        
+        // [수정] 월 이동 버튼 추가
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month - 1))),
+            IconButton(icon: const Icon(Icons.chevron_left, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month - 1))),
             SizedBox(
               width: 180,
               child: Center(child: Text(DateFormat('MMMM').format(_viewDate).toUpperCase(), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w200, letterSpacing: 2.5))),
             ),
-            IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month + 1))),
+            IconButton(icon: const Icon(Icons.chevron_right, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month + 1))),
           ],
         ),
+        
         const SizedBox(height: 30),
         const Text('REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.black26)), 
         Text(widget.remaining.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 60, fontWeight: FontWeight.w100)),
         const SizedBox(height: 30),
-        // 요일 표시
+
+        // [수정] 요일 표시 추가
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 10, color: Colors.black26, fontWeight: FontWeight.w900))).toList(),
+            children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.w900))).toList(),
           ),
         ),
         const SizedBox(height: 15),
+
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -343,7 +349,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 onTap: () => _showDayDetails(context, d),
                 child: Container(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle, color: Colors.white, // 날짜 카드 화이트
+                    shape: BoxShape.circle, 
+                    color: Colors.white, // 날짜 원은 무조건 화이트
                     border: Border.all(
                       color: isMissionsCompleted ? const Color(0xFFAF4448).withOpacity(0.8) : Colors.black.withOpacity(0.04),
                       width: isMissionsCompleted ? 2.2 : 1.0,
