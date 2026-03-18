@@ -13,6 +13,7 @@ class DisciplineApp extends StatelessWidget {
     return MaterialApp(
       theme: ThemeData(
         useMaterial3: true,
+        // [디자인] 사용자님이 원하시는 베이지톤 배경 설정
         scaffoldBackgroundColor: const Color(0xFFFAF9F6),
         fontFamily: 'Pretendard',
       ),
@@ -83,13 +84,11 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
-  // 실시간 결석 계산 로직
+  // [실시간 계산 로직]
   int get remainingMisses {
     int missCount = 0;
     DateTime now = DateTime.now();
-    DateTime checkUntil = now.isBefore(_endDate) ? now : _endDate;
-
-    for (int i = 0; i <= checkUntil.difference(_startDate).inDays; i++) {
+    for (int i = 0; i <= now.difference(_startDate).inDays; i++) {
       DateTime day = _startDate.add(Duration(days: i));
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord? r = _records[key];
@@ -121,7 +120,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 controller: TextEditingController(text: tempMiss.toString()),
                 onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
               ),
-              const SizedBox(height: 10),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('START DATE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -175,11 +173,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
               onTap: () => setState(() => _selectedIndex = (_selectedIndex == 0 ? 1 : 0)),
               child: Container(
                 width: 65, height: 65,
-                decoration: BoxDecoration(
-                  color: Colors.black, 
-                  shape: BoxShape.circle, 
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 6))]
-                ),
+                decoration: BoxDecoration(color: Colors.black, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)]),
                 child: Icon(_selectedIndex == 0 ? Icons.calendar_month : Icons.access_time_filled, color: Colors.white, size: 28),
               ),
             ),
@@ -190,7 +184,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
   }
 }
 
-// --- [PAGE 1: TODAY] --- (기존 디자인 복구)
+// --- [PAGE 1: TODAY] ---
 class TodayScreen extends StatefulWidget {
   final DayRecord Function(DateTime) getRecord;
   final VoidCallback onUpdate;
@@ -224,6 +218,7 @@ class _TodayScreenState extends State<TodayScreen> {
             const Text('TODAY', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 8)),
             Text(DateFormat('2026.MM.dd').format(_now), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w300, letterSpacing: 2, color: Colors.black45)),
             const SizedBox(height: 40),
+            // [디자인] 세로형 시계 UI
             Column(children: [
               Text(DateFormat('HH').format(_now), style: const TextStyle(fontSize: 82, fontWeight: FontWeight.w100, height: 0.9)),
               Text(DateFormat('mm').format(_now), style: const TextStyle(fontSize: 82, fontWeight: FontWeight.w100, height: 1.0)),
@@ -238,10 +233,11 @@ class _TodayScreenState extends State<TodayScreen> {
               ]),
             ),
             const SizedBox(height: 30),
+            // [디자인] 흰색 둥근 미션 카드
             Container(
               margin: const EdgeInsets.fromLTRB(30, 0, 30, 150),
               padding: const EdgeInsets.all(35),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(45), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 20, offset: const Offset(0, 10))]),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(45), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 20)]),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -281,7 +277,7 @@ class _TodayScreenState extends State<TodayScreen> {
   );
 }
 
-// --- [PAGE 2: CALENDAR] --- (기존 디자인 복구 + 실시간 연동)
+// --- [PAGE 2: CALENDAR] ---
 class CalendarScreen extends StatelessWidget {
   final Map<String, DayRecord> records;
   final int remaining;
@@ -305,7 +301,7 @@ class CalendarScreen extends StatelessWidget {
           Text(DateFormat('MMMM').format(now).toUpperCase(), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w200, letterSpacing: 2.5, color: Colors.black, height: 1.0)),
           const SizedBox(height: 40),
           const Text('REMAINING MISSES', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.black26)),
-          // [실시간 반영되는 숫자]
+          // [실시간] 부모로부터 전달받은 숫자 표시
           Text(remaining.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 65, fontWeight: FontWeight.w100)),
           const SizedBox(height: 30),
           Expanded(
@@ -317,9 +313,8 @@ class CalendarScreen extends StatelessWidget {
                 DateTime d = DateTime(now.year, now.month, index + 1);
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
                 DayRecord r = records.putIfAbsent(dateKey, () => DayRecord());
-                bool allDone = r.morning && r.evening;
                 bool isSunday = d.weekday == DateTime.sunday;
-
+                
                 return Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -330,7 +325,7 @@ class CalendarScreen extends StatelessWidget {
                     alignment: Alignment.center,
                     children: [
                       CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                      Text('${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: allDone ? Colors.white : Colors.black)),
+                      Text('${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: (r.morning && r.evening) ? Colors.white : Colors.black)),
                     ],
                   ),
                 );
@@ -348,7 +343,7 @@ class CirclePainter extends CustomPainter {
   CirclePainter(this.m, this.e);
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Colors.black..style = PaintingStyle.fill;
+    final p = Paint()...color = Colors.black..style = PaintingStyle.fill;
     if (m && e) canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
     else if (m) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
     else if (e) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
