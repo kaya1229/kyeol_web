@@ -1,14 +1,46 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base href="$FLUTTER_BASE_HREF">
+  <base href="/kyeol_web/">
 
   <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="kyeol_web">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <link rel="icon" type="image/png" href="favicon.png"/>
   <title>Kyeol Discipline App</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="manifest" href="manifest.json">
+
+  <script>
+    // 서비스 워커 버전 설정 (빌드 시 자동 관리)
+    var serviceWorkerVersion = null;
+  </script>
+  <script src="flutter.js" defer></script>
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+  <div id="loading" style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+    <p>앱을 불러오는 중입니다...</p>
+  </div>
+  <script>
+    window.addEventListener('load', function(ev) {
+      // 플러터 엔진 초기화
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: serviceWorkerVersion,
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            document.getElementById('loading').remove(); // 로딩 메시지 제거
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
 </body>
 </html>
