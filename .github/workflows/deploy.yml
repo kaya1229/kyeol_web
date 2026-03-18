@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Web
         # 'repository.name'을 사용하여 주소 경로를 자동으로 맞춥니다.
-        run: flutter build web --release --base-href /${{ github.event.repository.name }}/
+        run: flutter build web --release --base-href /kyeol_web/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
