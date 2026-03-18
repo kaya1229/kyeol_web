@@ -19,8 +19,8 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        # 'repository.name'을 사용하여 주소 경로를 자동으로 맞춥니다.
-        run: flutter build web --release --base-href /kyeol_web/
+        # base-href 뒤에 저장소 이름을 정확히 넣고, 양옆에 슬래시를 넣습니다.
+        run: flutter build web --release --base-href "/kyeol_web/"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
