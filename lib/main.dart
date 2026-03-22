@@ -211,6 +211,7 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   Widget build(BuildContext context) {
     DayRecord today = widget.getRecord(_now);
+    bool isSunday = _now.weekday == DateTime.sunday; 
     return SafeArea(
       child: SingleChildScrollView(
         child: Column(
@@ -404,7 +405,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               itemBuilder: (context, index) {
                 if (index < emptyDays) return const SizedBox();
                 DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
-                bool isSunday = d.weekday == Datetime.sunday;
+                bool isSunday = d.weekday == DateTime.sunday;
                 
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
                 DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
