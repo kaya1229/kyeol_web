@@ -91,9 +91,13 @@ class _NavigationScreenState extends State<NavigationScreen> {
   int get remainingMisses {
     int missPoints = 0;
     DateTime now = DateTime.now();
-    DateTime todayStart = DateTime(now.year, now.month, now.day);
-    for (int i = 0; i < todayStart.difference(_startDate).inDays; i++) {
-      DateTime day = _startDate.add(Duration(days: i));
+    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime start = DateTime(_startDate.year, _startDate.month, _startDate.day);
+
+    int totalDaysToCalculate = today.difference(start).inDays;
+    
+    for (int i = 0; i < totalDaysToCalculate; i++) {
+      DateTime day = start.add(Duration(days: i));
       if (day.weekday == DateTime.sunday) continue;
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord r = _records[key] ?? DayRecord();
