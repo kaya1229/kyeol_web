@@ -94,6 +94,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
     DateTime todayStart = DateTime(now.year, now.month, now.day);
     for (int i = 0; i < todayStart.difference(_startDate).inDays; i++) {
       DateTime day = _startDate.add(Duration(days: i));
+      if (day.weekday == DateTime.sunday) continue;
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord r = _records[key] ?? DayRecord();
       if (!r.morning) missPoints++;
@@ -227,7 +228,7 @@ class _TodayScreenState extends State<TodayScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(children: [
-                _checkBtn('MORNING', Icons.wb_sunny_outlined, today.morning, () { today.morning = !today.morning; widget.onUpdate(); }),
+                _checkBtn('MORNING', Icons.wb_sunny_outlined, today.morning, () { if (isSunday) return; today.morning = !today.morning; widget.onUpdate(); }),
                 const SizedBox(width: 15),
                 _checkBtn('EVENING', Icons.nightlight_outlined, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
               ]),
@@ -403,15 +404,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
               itemBuilder: (context, index) {
                 if (index < emptyDays) return const SizedBox();
                 DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
+                bool isSunday = d.weekday == Datetime.sunday;
+                
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
                 DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
                 bool isAllDone = r.morning && r.evening;
                 bool isMissionsCompleted = d.isBefore(todayStart) && r.todos.isNotEmpty && r.todos.every((t) => t.isDone);
+                
                 return GestureDetector(
                   onTap: () => _showDayDetails(context, d),
                   child: Container(
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: Colors.white,
+                      shape: BoxShape.circle, color: isSunday ? const Color(0xFFF5F5F5) : Colors.white,
                       border: Border.all(
                         color: isMissionsCompleted ? const Color(0xFFAF4448).withOpacity(0.8) : Colors.black.withOpacity(0.04),
                         width: isMissionsCompleted ? 2.2 : 1.0,
@@ -420,9 +424,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isAllDone ? Colors.white : Colors.black)),
-                      ],
+                        if(!isSunday) 
+                          CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isSunday ? Colors.black26 : (isAllDone ? Colors.white : Colors.black),
+                      ))],
                     ),
                   ),
                 );
