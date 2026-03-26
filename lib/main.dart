@@ -88,21 +88,23 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
+  // [수정 포인트 1] 결석 계산 로직 반전
   int get remainingMisses {
     int missPoints = 0;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
     DateTime start = DateTime(_startDate.year, _startDate.month, _startDate.day);
 
-    int totalDaysToCalculate = today.difference(start).inDays;
+    int totalDaysToCalculate = today.difference(start).inDays + 1; // 오늘까지 포함
     
     for (int i = 0; i < totalDaysToCalculate; i++) {
       DateTime day = start.add(Duration(days: i));
       if (day.weekday == DateTime.sunday) continue;
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord r = _records[key] ?? DayRecord();
-      if (!r.morning) missPoints++;
-      if (!r.evening) missPoints++;
+      // 기존: !r.morning 이면 결석 -> 변경: r.morning(버튼 누름)이면 결석
+      if (r.morning) missPoints++;
+      if (r.evening) missPoints++;
     }
     int res = _maxMissAllowance - missPoints;
     return res < 0 ? 0 : res;
@@ -233,9 +235,10 @@ class _TodayScreenState extends State<TodayScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(children: [
-                _checkBtn('MORNING', Icons.wb_sunny_outlined, today.morning, () { if (isSunday) return; today.morning = !today.morning; widget.onUpdate(); }),
+                // [수정 포인트 2] MORNING 버튼: 이제 isDone(버튼 누름)이 결석 체크임
+                _checkBtn('MORNING MISS', Icons.warning_amber_rounded, today.morning, () { if (isSunday) return; today.morning = !today.morning; widget.onUpdate(); }),
                 const SizedBox(width: 15),
-                _checkBtn('EVENING', Icons.nightlight_outlined, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
+                _checkBtn('EVENING MISS', Icons.warning_amber_rounded, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
               ]),
             ),
             const SizedBox(height: 30),
@@ -269,14 +272,28 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
   }
-  Widget _checkBtn(String label, IconData icon, bool isDone, VoidCallback onTap) => Expanded(
+
+  // [수정 포인트 3] 버튼 컬러 로직 반전
+  Widget _checkBtn(String label, IconData icon, bool isMissed, VoidCallback onTap) => Expanded(
     child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 22),
-        decoration: BoxDecoration(color: isDone ? Colors.black : Colors.white, borderRadius: BorderRadius.circular(25), border: isDone ? null : Border.all(color: Colors.black.withOpacity(0.05))),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: isDone ? Colors.white : Colors.black, size: 16), const SizedBox(width: 8), Text(label, style: TextStyle(color: isDone ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 10))]),
+        // 수정: isMissed(결석체크)가 false일 때 검은색(출석), true일 때 흰색(결석)
+        decoration: BoxDecoration(
+          color: isMissed ? Colors.white : Colors.black, 
+          borderRadius: BorderRadius.circular(25), 
+          border: Border.all(color: Colors.black.withOpacity(isMissed ? 0.2 : 0))
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center, 
+          children: [
+            Icon(icon, color: isMissed ? Colors.black : Colors.white, size: 16), 
+            const SizedBox(width: 8), 
+            Text(label, style: TextStyle(color: isMissed ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
+          ]
+        ),
       ),
     ),
   );
@@ -301,7 +318,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     DayRecord record = widget.records[dateKey] ?? DayRecord();
     DateTime now = DateTime.now();
     DateTime todayOnly = DateTime(now.year, now.month, now.day);
-    bool canEdit = !date.isBefore(todayOnly) && date.isBefore(todayOnly.add(const Duration(days: 8)));
+    bool canEdit = !date.isBefore(DateTime(2024));    
     final controller = TextEditingController();
 
     showDialog(
@@ -317,6 +334,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Text('ATTENDANCE STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 1)),
+                const SizedBox(height: 15),
+                Row(
+                  children: [
+                    _popupCheckBtn('AM', record.morning, () {
+                      setPopupState(() => record.morning = !record.morning);
+                      widget.onUpdate(); // 메인 UI의 남은 점수 즉시 갱신
+                    }),
+                    const SizedBox(width: 10),
+                    _popupCheckBtn('PM', record.evening, () {
+                      setPopupState(() => record.evening = !record.evening);
+                      widget.onUpdate();
+                    }),
+                  ],
+                ),
+                const Divider(height: 40, color: Colors.black12),
                 if (record.todos.isEmpty && !canEdit)
                   const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Text('No missions.', style: TextStyle(color: Colors.black26, fontSize: 13))),
                 if (canEdit) ...[
@@ -330,7 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   TextField(
                     controller: controller,
                     decoration: InputDecoration(
-                      hintText: '+ Future plan', filled: true, fillColor: const Color(0xFFF5F5F5),
+                      hintText: '+ Add plan', filled: true, fillColor: const Color(0xFFF5F5F5),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                     ),
                     onSubmitted: (v) { if (v.trim().isNotEmpty) { setPopupState(() => record.todos.add(TodoItem(v.trim()))); widget.onUpdate(); controller.clear(); } },
@@ -356,6 +389,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
+  Widget _popupCheckBtn(String label, bool isMissed, VoidCallback onTap) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isMissed ? Colors.white : Colors.black,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.black.withOpacity(isMissed ? 0.1 : 0)),
+        ),
+        child: Center(
+          child: Text(label, style: TextStyle(color: isMissed ? Colors.black26 : Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +462,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
                 DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
-                bool isAllDone = r.morning && r.evening;
+                
+                // [수정 포인트 4] 달력 원 색상 반전 로직
+                // 이제 r.morning=false 가 출석(검은색)임
+                bool isAllAttended = !r.morning && !r.evening;
                 bool isMissionsCompleted = d.isBefore(todayStart) && r.todos.isNotEmpty && r.todos.every((t) => t.isDone);
                 
                 return GestureDetector(
@@ -431,8 +483,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       children: [
                         if(!isSunday) 
                           CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isSunday ? Colors.black26 : (isAllDone ? Colors.white : Colors.black),
-                      ))],
+                        Text('${d.day}', style: TextStyle(
+                          fontSize: 12, 
+                          fontWeight: FontWeight.w900, 
+                          color: isSunday ? Colors.black26 : (isAllAttended ? Colors.white : Colors.black),
+                        ))],
                     ),
                   ),
                 );
@@ -445,15 +500,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
+// [수정 포인트 5] CirclePainter 로직 반전
 class CirclePainter extends CustomPainter {
   final bool m; final bool e;
   CirclePainter(this.m, this.e);
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()..color = Colors.black..style = PaintingStyle.fill;
-    if (m && e) canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
-    else if (m) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
-    else if (e) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
+    
+    // m(Morning Miss), e(Evening Miss)가 false일 때가 색이 칠해지는 상태
+    if (!m && !e) {
+      // 둘 다 출석 -> 꽉 찬 원
+      canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
+    } else if (!m && e) {
+      // 아침만 출석 -> 왼쪽 반원
+      canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
+    } else if (m && !e) {
+      // 저녁만 출석 -> 오른쪽 반원
+      canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
+    }
+    // 둘 다 결석(m=true, e=true)이면 아무것도 안 그림 (흰색)
   }
   @override
   bool shouldRepaint(CustomPainter old) => true;
