@@ -417,21 +417,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
                 bool isSunday = d.weekday == DateTime.sunday;
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
-                DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
-                return GestureDetector(
-                  onTap: () => _showDayDetails(context, d),
-                  child: Container(
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: isSunday ? const Color(0xFFF5F5F5) : Colors.white, border: Border.all(color: Colors.black.withOpacity(0.04))),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        if(!isSunday) CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isSunday ? Colors.black26 : ((r.morning || r.evening) ? Colors.white : Colors.black))),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                bool isMissionsCompleted = d.isBefore(todayOnly) && 
+                             r.todos.isNotEmpty && 
+                             r.todos.every((t) => t.isDone);
+  
+  return GestureDetector(
+    onTap: () => _showDayDetails(context, d),
+    child: Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle, 
+        color: isSunday ? const Color(0xFFF5F5F5) : Colors.white,
+        // 완료 시 톤 다운된 빨간 테두리 (#AF4448) 표시
+        border: Border.all(
+          color: isMissionsCompleted 
+              ? const Color(0xFFAF4448).withOpacity(0.8) 
+              : Colors.black.withOpacity(0.04), 
+          width: isMissionsCompleted ? 2.2 : 1.0
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if(!isSunday) CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+          Text('${d.day}', style: TextStyle(
+            fontSize: 12, 
+            fontWeight: FontWeight.w900, 
+            color: isSunday ? Colors.black26 : ((r.morning || r.evening) ? Colors.white : Colors.black)
+          )),
+        ],
+      ),
+    ),
+  );
+},
             ),
           ),
         ],
