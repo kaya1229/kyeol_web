@@ -337,7 +337,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     String dateKey = DateFormat('yyyy-MM-dd').format(date);
     DayRecord record = widget.records[dateKey] ?? DayRecord();
     DateTime todayOnly = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    // [기능 복구] 당일 포함 이후 7일만 수정 가능
+    // 당일 포함 이후 7일만 수정 가능
     bool canEditMissions = !date.isBefore(todayOnly) && date.isBefore(todayOnly.add(const Duration(days: 8)));
     final controller = TextEditingController();
 
@@ -384,6 +384,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     int daysInMonth = DateTime(_viewDate.year, _viewDate.month + 1, 0).day;
     DateTime firstDay = DateTime(_viewDate.year, _viewDate.month, 1);
     int emptyDays = firstDay.weekday % 7;
+    
+    // [수정] todayOnly 변수 선언
+    DateTime now = DateTime.now();
+    DateTime todayOnly = DateTime(now.year, now.month, now.day);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [IconButton(icon: const Icon(Icons.tune, color: Colors.black), onPressed: widget.onSettings)]),
@@ -414,41 +419,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
               itemCount: daysInMonth + emptyDays,
               itemBuilder: (context, index) {
                 if (index < emptyDays) return const SizedBox();
+                
                 DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
                 bool isSunday = d.weekday == DateTime.sunday;
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
+                
+                // [수정] 레코드 r 변수 가져오기
+                DayRecord r = widget.records[dateKey] ?? DayRecord();
+                
+                // [수정] 미션 완료 여부 판단 로직
                 bool isMissionsCompleted = d.isBefore(todayOnly) && 
-                             r.todos.isNotEmpty && 
-                             r.todos.every((t) => t.isDone);
-  
-  return GestureDetector(
-    onTap: () => _showDayDetails(context, d),
-    child: Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle, 
-        color: isSunday ? const Color(0xFFF5F5F5) : Colors.white,
-        // 완료 시 톤 다운된 빨간 테두리 (#AF4448) 표시
-        border: Border.all(
-          color: isMissionsCompleted 
-              ? const Color(0xFFAF4448).withOpacity(0.8) 
-              : Colors.black.withOpacity(0.04), 
-          width: isMissionsCompleted ? 2.2 : 1.0
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if(!isSunday) CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-          Text('${d.day}', style: TextStyle(
-            fontSize: 12, 
-            fontWeight: FontWeight.w900, 
-            color: isSunday ? Colors.black26 : ((r.morning || r.evening) ? Colors.white : Colors.black)
-          )),
-        ],
-      ),
-    ),
-  );
-},
+                                           r.todos.isNotEmpty && 
+                                           r.todos.every((t) => t.isDone);
+
+                return GestureDetector(
+                  onTap: () => _showDayDetails(context, d),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle, 
+                      color: isSunday ? const Color(0xFFF5F5F5) : Colors.white,
+                      border: Border.all(
+                        color: isMissionsCompleted 
+                            ? const Color(0xFFAF4448).withOpacity(0.8) 
+                            : Colors.black.withOpacity(0.04), 
+                        width: isMissionsCompleted ? 2.2 : 1.0
+                      ),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        if(!isSunday) CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+                        Text('${d.day}', style: TextStyle(
+                          fontSize: 12, 
+                          fontWeight: FontWeight.w900, 
+                          color: isSunday ? Colors.black26 : ((r.morning || r.evening) ? Colors.white : Colors.black)
+                        )),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
