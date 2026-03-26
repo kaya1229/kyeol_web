@@ -88,21 +88,17 @@ class _NavigationScreenState extends State<NavigationScreen> {
     await prefs.setString('records', jsonEncode(_records.map((k, v) => MapEntry(k, v.toJson()))));
   }
 
-  // [수정 포인트 1] 결석 계산 로직 반전
   int get remainingMisses {
     int missPoints = 0;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
     DateTime start = DateTime(_startDate.year, _startDate.month, _startDate.day);
-
-    int totalDaysToCalculate = today.difference(start).inDays + 1; // 오늘까지 포함
-    
+    int totalDaysToCalculate = today.difference(start).inDays + 1;
     for (int i = 0; i < totalDaysToCalculate; i++) {
       DateTime day = start.add(Duration(days: i));
       if (day.weekday == DateTime.sunday) continue;
       String key = DateFormat('yyyy-MM-dd').format(day);
       DayRecord r = _records[key] ?? DayRecord();
-      // 기존: !r.morning 이면 결석 -> 변경: r.morning(버튼 누름)이면 결석
       if (r.morning) missPoints++;
       if (r.evening) missPoints++;
     }
@@ -110,58 +106,96 @@ class _NavigationScreenState extends State<NavigationScreen> {
     return res < 0 ? 0 : res;
   }
 
+  // --- [설정창: 정정 기능 추가] ---
   void _showSettings() async {
     int tempMiss = _maxMissAllowance;
     DateTime tempStart = _startDate;
     DateTime tempEnd = _endDate;
+    DateTime correctionDate = DateTime.now();
+
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          title: const Text('SETTINGS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: const InputDecoration(labelText: 'MAX MISS POINTS'),
-                keyboardType: TextInputType.number,
-                controller: TextEditingController(text: tempMiss.toString()),
-                onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
+        builder: (context, setDialogState) {
+          String dateKey = DateFormat('yyyy-MM-dd').format(correctionDate);
+          DayRecord record = _records.putIfAbsent(dateKey, () => DayRecord());
+
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            title: const Text('SETTINGS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'MAX MISS POINTS'),
+                    keyboardType: TextInputType.number,
+                    controller: TextEditingController(text: tempMiss.toString()),
+                    onChanged: (v) => tempMiss = int.tryParse(v) ?? tempMiss,
+                  ),
+                  ListTile(
+                    title: const Text('START DATE', style: TextStyle(fontSize: 12)),
+                    subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
+                    onTap: () async {
+                      DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                      if (picked != null) setDialogState(() => tempStart = picked);
+                    },
+                  ),
+                  ListTile(
+                    title: const Text('END DATE', style: TextStyle(fontSize: 12)),
+                    subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
+                    onTap: () async {
+                      DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
+                      if (picked != null) setDialogState(() => tempEnd = picked);
+                    },
+                  ),
+                  const Divider(height: 30),
+                  const Text('CORRECT ATTENDANCE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26)),
+                  ListTile(
+                    title: Text(DateFormat('yyyy.MM.dd').format(correctionDate), style: const TextStyle(fontSize: 13)),
+                    trailing: const Icon(Icons.calendar_today, size: 16),
+                    onTap: () async {
+                      DateTime? picked = await showDatePicker(context: context, initialDate: correctionDate, firstDate: tempStart, lastDate: DateTime.now());
+                      if (picked != null) setDialogState(() => correctionDate = picked);
+                    },
+                  ),
+                  Row(
+                    children: [
+                      _settingCheckBtn('AM', record.morning, () { setDialogState(() => record.morning = !record.morning); _updateState(); }),
+                      const SizedBox(width: 8),
+                      _settingCheckBtn('PM', record.evening, () { setDialogState(() => record.evening = !record.evening); _updateState(); }),
+                    ],
+                  ),
+                ],
               ),
-              ListTile(
-                title: const Text('START DATE', style: TextStyle(fontSize: 12)),
-                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempStart)),
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(context: context, initialDate: tempStart, firstDate: DateTime(2024), lastDate: DateTime(2030));
-                  if (picked != null) setDialogState(() => tempStart = picked);
-                },
-              ),
-              ListTile(
-                title: const Text('END DATE', style: TextStyle(fontSize: 12)),
-                subtitle: Text(DateFormat('yyyy.MM.dd').format(tempEnd)),
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(context: context, initialDate: tempEnd, firstDate: DateTime(2024), lastDate: DateTime(2030));
-                  if (picked != null) setDialogState(() => tempEnd = picked);
-                },
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                onPressed: () {
+                  setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
+                  _updateState(); Navigator.pop(context);
+                }, 
+                child: const Text('SAVE')
               ),
             ],
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-              onPressed: () {
-                setState(() { _maxMissAllowance = tempMiss; _startDate = tempStart; _endDate = tempEnd; });
-                _updateState(); Navigator.pop(context);
-              }, 
-              child: const Text('SAVE')
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
+
+  Widget _settingCheckBtn(String label, bool isMissed, VoidCallback onTap) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(color: isMissed ? Colors.black : Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.black.withOpacity(isMissed ? 0 : 0.1))),
+        child: Center(child: Text(label, style: TextStyle(color: isMissed ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 11))),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -235,10 +269,9 @@ class _TodayScreenState extends State<TodayScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(children: [
-                // [수정 포인트 2] MORNING 버튼: 이제 isDone(버튼 누름)이 결석 체크임
-                _checkBtn('MORNING MISS', Icons.warning_amber_rounded, today.morning, () { if (isSunday) return; today.morning = !today.morning; widget.onUpdate(); }),
+                _checkBtn('MORNING', Icons.wb_sunny_outlined, today.morning, () { if (isSunday) return; today.morning = !today.morning; widget.onUpdate(); }),
                 const SizedBox(width: 15),
-                _checkBtn('EVENING MISS', Icons.warning_amber_rounded, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
+                _checkBtn('EVENING', Icons.nightlight_outlined, today.evening, () { today.evening = !today.evening; widget.onUpdate(); }),
               ]),
             ),
             const SizedBox(height: 30),
@@ -273,27 +306,14 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // [수정 포인트 3] 버튼 컬러 로직 반전
   Widget _checkBtn(String label, IconData icon, bool isMissed, VoidCallback onTap) => Expanded(
     child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 22),
-        // 수정: isMissed(결석체크)가 false일 때 검은색(출석), true일 때 흰색(결석)
-        decoration: BoxDecoration(
-          color: isMissed ? Colors.white : Colors.black, 
-          borderRadius: BorderRadius.circular(25), 
-          border: Border.all(color: Colors.black.withOpacity(isMissed ? 0.2 : 0))
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center, 
-          children: [
-            Icon(icon, color: isMissed ? Colors.black : Colors.white, size: 16), 
-            const SizedBox(width: 8), 
-            Text(label, style: TextStyle(color: isMissed ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
-          ]
-        ),
+        decoration: BoxDecoration(color: isMissed ? Colors.black : Colors.white, borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.black.withOpacity(isMissed ? 0 : 0.05))),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: isMissed ? Colors.white : Colors.black, size: 16), const SizedBox(width: 8), Text(label, style: TextStyle(color: isMissed ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 10))]),
       ),
     ),
   );
@@ -316,9 +336,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _showDayDetails(BuildContext context, DateTime date) {
     String dateKey = DateFormat('yyyy-MM-dd').format(date);
     DayRecord record = widget.records[dateKey] ?? DayRecord();
-    DateTime now = DateTime.now();
-    DateTime todayOnly = DateTime(now.year, now.month, now.day);
-    bool canEdit = !date.isBefore(DateTime(2024));    
+    DateTime todayOnly = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    // [기능 복구] 당일 포함 이후 7일만 수정 가능
+    bool canEditMissions = !date.isBefore(todayOnly) && date.isBefore(todayOnly.add(const Duration(days: 8)));
     final controller = TextEditingController();
 
     showDialog(
@@ -326,7 +346,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setPopupState) => AlertDialog(
           backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
           title: Center(child: Text(DateFormat('MMMM dd').format(date).toUpperCase(), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 2))),
           content: SizedBox(
@@ -334,92 +353,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('ATTENDANCE STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 1)),
-                const SizedBox(height: 15),
-                Row(
-                  children: [
-                    _popupCheckBtn('AM', record.morning, () {
-                      setPopupState(() => record.morning = !record.morning);
-                      widget.onUpdate(); // 메인 UI의 남은 점수 즉시 갱신
-                    }),
-                    const SizedBox(width: 10),
-                    _popupCheckBtn('PM', record.evening, () {
-                      setPopupState(() => record.evening = !record.evening);
-                      widget.onUpdate();
-                    }),
-                  ],
-                ),
-                const Divider(height: 40, color: Colors.black12),
-                if (record.todos.isEmpty && !canEdit)
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Text('No missions.', style: TextStyle(color: Colors.black26, fontSize: 13))),
-                if (canEdit) ...[
-                  ...record.todos.asMap().entries.map((e) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(e.value.isDone ? Icons.check_circle : Icons.circle_outlined, color: Colors.black, size: 18),
-                    title: Text(e.value.task, style: const TextStyle(fontSize: 13)),
-                    trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, size: 16), onPressed: () { setPopupState(() => record.todos.removeAt(e.key)); widget.onUpdate(); }),
-                  )),
+                const Text('MISSIONS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 1)),
+                if (record.todos.isEmpty && !canEditMissions)
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('No plans.', style: TextStyle(color: Colors.black26, fontSize: 13))),
+                ...record.todos.asMap().entries.map((e) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(e.value.isDone ? Icons.check_circle : Icons.circle_outlined, color: Colors.black, size: 18),
+                  title: Text(e.value.task, style: const TextStyle(fontSize: 13)),
+                  trailing: canEditMissions ? IconButton(icon: const Icon(Icons.remove_circle_outline, size: 16), onPressed: () { setPopupState(() => record.todos.removeAt(e.key)); widget.onUpdate(); }) : null,
+                )),
+                if (canEditMissions) ...[
                   const SizedBox(height: 10),
                   TextField(
                     controller: controller,
-                    decoration: InputDecoration(
-                      hintText: '+ Add plan', filled: true, fillColor: const Color(0xFFF5F5F5),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                    ),
+                    decoration: InputDecoration(hintText: '+ Add plan', filled: true, fillColor: const Color(0xFFF5F5F5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none)),
                     onSubmitted: (v) { if (v.trim().isNotEmpty) { setPopupState(() => record.todos.add(TodoItem(v.trim()))); widget.onUpdate(); controller.clear(); } },
                   ),
-                ] else if (record.todos.isNotEmpty) ...[
-                  ...record.todos.map((e) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(e.isDone ? Icons.check_circle : Icons.circle_outlined, color: Colors.black, size: 18),
-                    title: Text(e.task, style: const TextStyle(fontSize: 13)),
-                  )),
-                ]
+                ],
               ],
             ),
           ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-              onPressed: () => Navigator.pop(context), 
-              child: const Text('CLOSE')
-            ),
-          ],
+          actions: [ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: () => Navigator.pop(context), child: const Text('CLOSE'))],
         ),
       ),
     );
   }
-  Widget _popupCheckBtn(String label, bool isMissed, VoidCallback onTap) => Expanded(
-    child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isMissed ? Colors.white : Colors.black,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.black.withOpacity(isMissed ? 0.1 : 0)),
-        ),
-        child: Center(
-          child: Text(label, style: TextStyle(color: isMissed ? Colors.black26 : Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-        ),
-      ),
-    ),
-  );
 
   @override
   Widget build(BuildContext context) {
     int daysInMonth = DateTime(_viewDate.year, _viewDate.month + 1, 0).day;
     DateTime firstDay = DateTime(_viewDate.year, _viewDate.month, 1);
     int emptyDays = firstDay.weekday % 7;
-    DateTime todayStart = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [IconButton(icon: const Icon(Icons.tune, color: Colors.black), onPressed: widget.onSettings)],
-      ),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [IconButton(icon: const Icon(Icons.tune, color: Colors.black), onPressed: widget.onSettings)]),
       body: Column(
         children: [
           Text('${_viewDate.year}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w300, letterSpacing: 10, color: Colors.black26)),
@@ -427,14 +394,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(icon: const Icon(Icons.chevron_left, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month - 1))),
-              Expanded(
-                child: Center(
-                  child: Text(DateFormat('MMMM').format(_viewDate).toUpperCase(), 
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w200, letterSpacing: 1.5),
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
+              Expanded(child: Center(child: Text(DateFormat('MMMM').format(_viewDate).toUpperCase(), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w200, letterSpacing: 1.5), maxLines: 1, overflow: TextOverflow.ellipsis))),
               IconButton(icon: const Icon(Icons.chevron_right, color: Colors.black), onPressed: () => setState(() => _viewDate = DateTime(_viewDate.year, _viewDate.month + 1))),
             ],
           ),
@@ -444,10 +404,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           const SizedBox(height: 30),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.w900))).toList(),
-            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: ['S','M','T','W','T','F','S'].map((s) => Text(s, style: const TextStyle(fontSize: 11, color: Colors.black26, fontWeight: FontWeight.w900))).toList()),
           ),
           const SizedBox(height: 15),
           Expanded(
@@ -459,35 +416,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 if (index < emptyDays) return const SizedBox();
                 DateTime d = DateTime(_viewDate.year, _viewDate.month, index - emptyDays + 1);
                 bool isSunday = d.weekday == DateTime.sunday;
-                
                 String dateKey = DateFormat('yyyy-MM-dd').format(d);
                 DayRecord r = widget.records.putIfAbsent(dateKey, () => DayRecord());
-                
-                // [수정 포인트 4] 달력 원 색상 반전 로직
-                // 이제 r.morning=false 가 출석(검은색)임
-                bool isAllAttended = !r.morning && !r.evening;
-                bool isMissionsCompleted = d.isBefore(todayStart) && r.todos.isNotEmpty && r.todos.every((t) => t.isDone);
-                
                 return GestureDetector(
                   onTap: () => _showDayDetails(context, d),
                   child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: isSunday ? const Color(0xFFF5F5F5) : Colors.white,
-                      border: Border.all(
-                        color: isMissionsCompleted ? const Color(0xFFAF4448).withOpacity(0.8) : Colors.black.withOpacity(0.04),
-                        width: isMissionsCompleted ? 2.2 : 1.0,
-                      ),
-                    ),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: isSunday ? const Color(0xFFF5F5F5) : Colors.white, border: Border.all(color: Colors.black.withOpacity(0.04))),
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        if(!isSunday) 
-                          CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
-                        Text('${d.day}', style: TextStyle(
-                          fontSize: 12, 
-                          fontWeight: FontWeight.w900, 
-                          color: isSunday ? Colors.black26 : (isAllAttended ? Colors.white : Colors.black),
-                        ))],
+                        if(!isSunday) CustomPaint(size: Size.infinite, painter: CirclePainter(r.morning, r.evening)),
+                        Text('${d.day}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isSunday ? Colors.black26 : ((r.morning || r.evening) ? Colors.white : Colors.black))),
+                      ],
                     ),
                   ),
                 );
@@ -500,26 +440,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
-// [수정 포인트 5] CirclePainter 로직 반전
 class CirclePainter extends CustomPainter {
   final bool m; final bool e;
   CirclePainter(this.m, this.e);
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()..color = Colors.black..style = PaintingStyle.fill;
-    
-    // m(Morning Miss), e(Evening Miss)가 false일 때가 색이 칠해지는 상태
-    if (!m && !e) {
-      // 둘 다 출석 -> 꽉 찬 원
-      canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
-    } else if (!m && e) {
-      // 아침만 출석 -> 왼쪽 반원
-      canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
-    } else if (m && !e) {
-      // 저녁만 출석 -> 오른쪽 반원
-      canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
-    }
-    // 둘 다 결석(m=true, e=true)이면 아무것도 안 그림 (흰색)
+    if (m && e) canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, p);
+    else if (m) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 3.14, true, p);
+    else if (e) canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 4.71, 3.14, true, p);
   }
   @override
   bool shouldRepaint(CustomPainter old) => true;
